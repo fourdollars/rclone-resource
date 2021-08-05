@@ -1,0 +1,170 @@
+#!/bin/bash
+
+set -euo pipefail
+IFS=$'\n\t'
+
+exec 3>&1
+exec 1>&2
+jq -M -S . < /dev/stdin > /tmp/input.json
+
+mkdir -p /config/rclone
+cat >/config/rclone/rclone.conf <<ENDLINE
+$(jq -r '.source.config' < /tmp/input.json)
+ENDLINE
+
+remote=$(jq -r .source.remote < /tmp/input.json)
+skip=$(jq -r '.params.skip // "false"' < /tmp/input.json)
+
+if [ "$(jq -r '.source | has("path")' < /tmp/input.json)" = 'true' ]; then
+    path=$(jq -r '.source.path' < /tmp/input.json)
+    dest+="$path/"
+else
+    dest+=""
+fi
+
+if [ "$(jq -r '.params | has("path")' < /tmp/input.json)" = 'true' ]; then
+    path=$(jq -r '.params.path' < /tmp/input.json)
+    dest+="$path/"
+fi
+
+if [ "$(jq -r '.params | has("files")' < /tmp/input.json)" = 'true' ]; then
+    mapfile -t files < <(jq -r '.params.files|.[]' < /tmp/input.json | sort)
+elif [ "$(jq -r '.source | has("files")' < /tmp/input.json)" = 'true' ]; then
+    mapfile -t files < <(jq -r '.source.files|.[]' < /tmp/input.json | sort)
+else
+    files=()
+fi
+
+if [ "$(jq -r '.params | has("args")' < /tmp/input.json)" = 'true' ]; then
+    mapfile -t args < <(jq -r '.params.args|.[]' < /tmp/input.json)
+elif [ "$(jq -r '.source | has("args")' < /tmp/input.json)" = 'true' ]; then
+    mapfile -t args < <(jq -r '.source.args|.[]' < /tmp/input.json)
+else
+    args=()
+fi
+
+from=$(jq -r '.params.from' < /tmp/input.json)
+
+case "$0" in
+    ('/opt/resource/check')
+        if [ -z "${files[*]}" ]; then
+            rclone lsjson "$remote:$dest" > /tmp/files.json
+        else
+            data="["
+            for file in "${files[@]}"; do
+                if [ "$file" != "${files[-1]}" ]; then
+                    data+="$(rclone lsjson "$remote:$dest/$file" | jq -r .[]),"
+                else
+                    data+="$(rclone lsjson "$remote:$dest/$file" | jq -r .[])"
+                fi
+            done
+            data+="]"
+            echo "$data" > /tmp/files.json
+        fi
+        jq -C < /tmp/files.json
+        digest="sha256:$(jq -S -M < /tmp/files.json | sha256sum | awk '{print $1}')"
+        json="[{\"digest\":\"$digest\"}]"
+        ;;
+    ('/opt/resource/in')
+        cd "$1" # /tmp/build/get
+        if [ -z "${files[*]}" ]; then
+            rclone lsjson "$remote:$dest" > /tmp/files.json
+            if [ "$skip" = "false" ]; then
+                rclone copy "${args[@]}" "$remote:$dest" .
+            fi
+        else
+            data="["
+            for file in "${files[@]}"; do
+                if [ "$file" != "${files[-1]}" ]; then
+                    data+="$(rclone lsjson "$remote:$dest/$file" | jq -r .[]),"
+                else
+                    data+="$(rclone lsjson "$remote:$dest/$file" | jq -r .[])"
+                fi
+                if [ "$skip" = "false" ]; then
+                    rclone copy "${args[@]}" "$remote:$dest/$file" .
+                fi
+            done
+            data+="]"
+            echo "$data" > /tmp/files.json
+        fi
+        jq -C < /tmp/files.json
+        digest="sha256:$(jq -S -M < /tmp/files.json | sha256sum | awk '{print $1}')"
+        json=$(cat <<ENDLINE
+{
+    "version": {
+        "digest": "$digest"
+    },
+    "metadata": [
+ENDLINE
+)
+        last=$(jq -r '.[-1] | .Name // ""' < /tmp/files.json)
+        while read -r name; do
+            size=$(jq -r ".[] | select(.Name == \"$name\") | .Size" < /tmp/files.json)
+            isdir=$(jq -r ".[] | select(.Name == \"$name\") | .IsDir" < /tmp/files.json)
+            if [ "$isdir" == "true" ]; then
+                size="folder"
+            fi
+            json+=$(cat <<ENDLINE
+        {
+            "name": "$name",
+            "value": "$size"
+        }
+ENDLINE
+)
+            if [ "$last" != "$name" ]; then
+                json+=","
+            fi
+        done < <(jq -r '.[] | .Name' < /tmp/files.json)
+        json+=$(cat <<ENDLINE
+    ]
+}
+ENDLINE
+)
+        ;;
+    ('/opt/resource/out')
+        cd "$1" # /tmp/build/put
+        if [ -z "${files[*]}" ]; then
+            rclone copy "${args[@]}" "$from" "$remote:$dest"
+        else
+            for file in "${files[@]}"; do
+                rclone copy "${args[@]}" "$from/$file" "$remote:$dest"
+            done
+        fi
+        rclone lsjson "$remote:$dest" > /tmp/files.json
+        jq -C < /tmp/files.json
+        digest="sha256:$(jq -S -M < /tmp/files.json | sha256sum | awk '{print $1}')"
+        json=$(cat <<ENDLINE
+{
+    "version": {
+        "digest": "$digest"
+    },
+    "metadata": [
+ENDLINE
+)
+        last=$(jq -r '.[-1] | .Name // ""' < /tmp/files.json)
+        while read -r name; do
+            size=$(jq -r ".[] | select(.Name == \"$name\") | .Size" < /tmp/files.json)
+            isdir=$(jq -r ".[] | select(.Name == \"$name\") | .IsDir" < /tmp/files.json)
+            if [ "$isdir" == "true" ]; then
+                size="folder"
+            fi
+            json+=$(cat <<ENDLINE
+        {
+            "name": "$name",
+            "value": "$size"
+        }
+ENDLINE
+)
+            if [ "$last" != "$name" ]; then
+                json+=","
+            fi
+        done < <(jq -r '.[] | .Name' < /tmp/files.json)
+        json+=$(cat <<ENDLINE
+    ]
+}
+ENDLINE
+)
+        ;;
+esac
+
+jq -n "$json" >&3
