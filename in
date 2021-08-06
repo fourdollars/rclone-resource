@@ -13,18 +13,20 @@ $(jq -r '.source.config' < /tmp/input.json)
 ENDLINE
 
 remote=$(jq -r .source.remote < /tmp/input.json)
-dest=""
 
 if [ "$(jq -r '.source | has("path")' < /tmp/input.json)" = 'true' ]; then
     path=$(jq -r '.source.path' < /tmp/input.json)
-    dest+="$path/"
+    dest="$path/"
 else
-    dest+=""
+    path=""
+    dest=""
 fi
 
 if [ "$(jq -r '.params | has("folder")' < /tmp/input.json)" = 'true' ]; then
     folder=$(jq -r '.params.folder' < /tmp/input.json)
     dest+="$folder/"
+else
+    folder=""
 fi
 
 if [ "$(jq -r '.source | has("files")' < /tmp/input.json)" = 'true' ]; then
