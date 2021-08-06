@@ -87,50 +87,34 @@ case "$0" in
             data+="]"
             echo "$data" > /tmp/files.json
         fi
-        jq -C < /tmp/files.json
-        digest="sha256:$(jq -S -M < /tmp/files.json | sha256sum | awk '{print $1}')"
-        json=$(cat <<ENDLINE
-{
-    "version": {
-        "digest": "$digest"
-    },
-    "metadata": [
-ENDLINE
-)
-        last=$(jq -r '.[-1] | .Name // ""' < /tmp/files.json)
-        while read -r name; do
-            size=$(jq -r ".[] | select(.Name == \"$name\") | .Size" < /tmp/files.json)
-            isdir=$(jq -r ".[] | select(.Name == \"$name\") | .IsDir" < /tmp/files.json)
-            if [ "$isdir" == "true" ]; then
-                size="folder"
-            fi
-            json+=$(cat <<ENDLINE
-        {
-            "name": "$name",
-            "value": "$size"
-        }
-ENDLINE
-)
-            if [ "$last" != "$name" ]; then
-                json+=","
-            fi
-        done < <(jq -r '.[] | .Name' < /tmp/files.json)
-        json+=$(cat <<ENDLINE
-    ]
-}
-ENDLINE
-)
+        size=$(du -shc . | awk '{print $1}' | tail -n 1)
         ;;
     ('/opt/resource/out')
         cd "$1" # /tmp/build/put
         if [ -z "${files[*]}" ]; then
             rclone copy "${args[@]}" "$from" "$remote:$dest"
+            rclone lsjson "$remote:$dest" > /tmp/files.json
+            size=$(du -shc . | awk '{print $1}' | tail -n 1)
         else
+            data="["
             for file in "${files[@]}"; do
                 rclone copy "${args[@]}" "$from/$file" "$remote:$dest"
+                if [ "$file" != "${files[-1]}" ]; then
+                    data+="$(rclone lsjson "$remote:$dest/$file" | jq -r .[]),"
+                else
+                    data+="$(rclone lsjson "$remote:$dest/$file" | jq -r .[])"
+                fi
             done
+            data+="]"
+            echo "$data" > /tmp/files.json
+            cd "$from"
+            size=$(du -shc "${files[*]}" | awk '{print $1}' | tail -n 1)
         fi
-        rclone lsjson "$remote:$dest" > /tmp/files.json
+        ;;
+esac
+
+case "$0" in
+    ('/opt/resource/in'|'/opt/resource/out')
         jq -C < /tmp/files.json
         digest="sha256:$(jq -S -M < /tmp/files.json | sha256sum | awk '{print $1}')"
         json=$(cat <<ENDLINE
@@ -141,29 +125,35 @@ ENDLINE
     "metadata": [
 ENDLINE
 )
-        last=$(jq -r '.[-1] | .Name // ""' < /tmp/files.json)
+        folders=()
+        files=()
         while read -r name; do
-            size=$(jq -r ".[] | select(.Name == \"$name\") | .Size" < /tmp/files.json)
             isdir=$(jq -r ".[] | select(.Name == \"$name\") | .IsDir" < /tmp/files.json)
             if [ "$isdir" == "true" ]; then
-                size="folder"
-            fi
-            json+=$(cat <<ENDLINE
-        {
-            "name": "$name",
-            "value": "$size"
-        }
-ENDLINE
-)
-            if [ "$last" != "$name" ]; then
-                json+=","
+                folders+=("$name")
+            else
+                files+=("$name")
             fi
         done < <(jq -r '.[] | .Name' < /tmp/files.json)
+        IFS=$'\n'
         json+=$(cat <<ENDLINE
+        {
+            "name": "folder",
+            "value": "${folders[*]}"
+        },
+        {
+            "name": "file",
+            "value": "${files[*]}"
+        },
+        {
+            "name": "size",
+            "value": "$size"
+        }
     ]
 }
 ENDLINE
 )
+        IFS=$'\n\t'
         ;;
 esac
 
