@@ -35,6 +35,7 @@ resource_types:
 * config: **required**
 * path: optional, if not specified, it will watch the root folder.
 * files: optional, if not specified, it will watch the whole folder.
+* args: optional, the arguments list passed to `rclone copy`.
 
 ```yaml
 resources:
@@ -49,7 +50,16 @@ resources:
       vendor = other
       user = hello-kitty
       pass = e3b0c44298fc1-149afbf4c8996fb92427ae41
-    path: FirstFolder
+    path: First/Path
+```
+
+### check step
+
+It will use `rclone lsjson` to watch the changes.
+
+```shell
+# It acts like the following command.
+$ rclone lsjson webdavRemote:First/Path
 ```
 
 ### get step
@@ -57,44 +67,48 @@ resources:
 * path: optional
 * files: optional, if specified, it will overwrite the files in source.
 * skip: optional, set true if you just want to list files and folders.
+* args: optional, the arguments list passed to `rclone copy`.
 
 ```yaml
 - get: storage
   params:
-    path: SecondaryFolder
+    folder: Second/Folder
     files:
       - file1.txt
       - file2.txt
-    skip: false
 ```
 ```shell
 # It acts like the following commands.
 $ cd /tmp/build/get
-$ rclone copy webdavRemote:FirstFolder/SecondaryFolder/file1.txt .
-$ rclone copy webdavRemote:FirstFolder/SecondaryFolder/file2.txt .
+$ rclone copy webdavRemote:First/Path/Second/Folder/file1.txt .
+$ rclone copy webdavRemote:First/Path/Second/Folder/file2.txt .
 ```
 
 ### put step
 
 * from: **required**
 * files: optional, if not specified, it will copy all files under 'from'.
-* path: optional
-* skip: optional if you don't want the [implicit get step](https://concourse-ci.org/jobs.html#put-step) after the put step to download the same content again in order to save the execution time.
+* folder: optional
+* args: optional, the arguments list passed to `rclone copy`.
+* get_params:
+  * skip: optional if you don't want the [implicit get step](https://concourse-ci.org/jobs.html#put-step) after the put step to download the same content again in order to save the execution time.
 
 ```yaml
 - put: storage
   params:
+    args:
+      - --ignore-times
     from: SomeFolderInTask
     files:
       - file1.txt
       - file2.txt
-    path: SecondaryDirectory
+    folder: Second/Folder
   get_params:
     skip: true
 ```
 ```shell
 # It acts like the following commands.
 $ cd /tmp/build/put
-$ rclone copy SomeFolderInTask/file1.txt webdavRemote:FirstFolder/SecondaryFolder
-$ rclone copy SomeFolderInTask/file2.txt webdavRemote:FirstFolder/SecondaryFolder
+$ rclone copy --ignore-times SomeFolderInTask/file1.txt webdavRemote:First/Path/Second/Folder
+$ rclone copy --ignore-times SomeFolderInTask/file2.txt webdavRemote:First/Path/Second/Folder
 ```
