@@ -161,13 +161,13 @@ case "$0" in
         cd "$1" # /tmp/build/put
         if [ -z "${params_files[*]}" ]; then
             rclone copy "${args[@]}" "$from" "$remote:$dest"
-            size=$(du -shc . | awk '{print $1}' | tail -n 1)
+            size=$(du -shc "$from" | awk '{print $1}' | tail -n 1)
         else
             cd "$from"
             for file in "${params_files[@]}"; do
                 rclone copy "${args[@]}" "$file" "$remote:$dest"
             done
-            size=$(du -shc "${params_files[*]}" | awk '{print $1}' | tail -n 1)
+            size=$(du -shc "${params_files[@]}" | awk '{print $1}' | tail -n 1)
         fi
         get_files_json
         make_output_json
