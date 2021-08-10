@@ -3,6 +3,17 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+clearup ()
+{
+    set +x
+    rm -f /tmp/files.json
+    rm -f /tmp/input.json
+    rm -f /config/rclone/rclone.conf
+}
+
+trap clearup EXIT INT TERM
+
+
 exec 3>&1
 exec 1>&2
 jq -M -S . < /dev/stdin > /tmp/input.json
