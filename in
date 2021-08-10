@@ -167,6 +167,9 @@ case "$0" in
         size=$(du -shc . | awk '{print $1}' | tail -n 1)
         get_files_json
         make_output_json
+        if [ "$skip" = "true" ]; then
+            cp /tmp/files.json .
+        fi
         ;;
     ('/opt/resource/out')
         cd "$1" # /tmp/build/put
