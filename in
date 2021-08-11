@@ -67,14 +67,14 @@ debug=$(jq -r '.source.debug // "false"' < /tmp/input.json)
 get_files_json()
 {
     if [ -z "${files[*]}" ]; then
-        rclone lsjson "$remote:$path" > /tmp/files.json
+        rclone lsjson "${args[@]}" "$remote:$path" > /tmp/files.json
     else
         data="["
         for file in "${files[@]}"; do
             if [ "$file" != "${files[-1]}" ]; then
-                data+="$(rclone lsjson "$remote:$path/$file" | jq -r .[]),"
+                data+="$(rclone lsjson "${args[@]}" "$remote:$path/$file" | jq -r .[]),"
             else
-                data+="$(rclone lsjson "$remote:$path/$file" | jq -r .[])"
+                data+="$(rclone lsjson "${args[@]}" "$remote:$path/$file" | jq -r .[])"
             fi
         done
         data+="]"
