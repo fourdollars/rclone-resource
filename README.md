@@ -35,7 +35,7 @@ resource_types:
 * config: **required**
 * path: optional, if not specified, it will watch the root folder.
 * files: optional, if not specified, it will watch the whole folder.
-* args: optional, the arguments list passed to `rclone lsjson` and `rclone copy`.
+* args: optional, the arguments list passed to `rclone copy`.
 
 ```yaml
 resources:
