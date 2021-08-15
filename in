@@ -91,7 +91,8 @@ make_output_json()
     json=$(cat <<ENDLINE
 {
     "version": {
-        "digest": "$digest"
+        "digest": "$digest",
+        "uri": "$remote:$path"
     },
     "metadata": [
 ENDLINE
@@ -151,7 +152,7 @@ case "$0" in
     ('/opt/resource/check')
         get_files_json
         digest="sha256:$(jq -S -M < /tmp/files.json | sha256sum | awk '{print $1}')"
-        json="[{\"digest\":\"$digest\"}]"
+        json="[{\"digest\":\"$digest\",\"uri\": \"$remote:$path\"}]"
         ;;
     ('/opt/resource/in')
         cd "$1" # /tmp/build/get
