@@ -7,7 +7,6 @@ clearup ()
 {
     set +x
     rm -f /tmp/files.json
-    rm -f /tmp/input.json
     rm -f /config/rclone/rclone.conf
 }
 
@@ -16,53 +15,54 @@ trap clearup EXIT INT TERM
 
 exec 3>&1
 exec 1>&2
-jq -M -S . < /dev/stdin > /tmp/input.json
+
+payload="$(cat <&0)"
 
 mkdir -p /config/rclone
 cat >/config/rclone/rclone.conf <<ENDLINE
-$(jq -r '.source.config' < /tmp/input.json)
+$(jq -r '.source.config' <<< "$payload")
 ENDLINE
 
-remote=$(jq -r .source.remote < /tmp/input.json)
+remote=$(jq -r .source.remote <<< "$payload")
 
-if [ "$(jq -r '.source | has("path")' < /tmp/input.json)" = 'true' ]; then
-    path=$(jq -r '.source.path' < /tmp/input.json)
+if [ "$(jq -r '.source | has("path")' <<< "$payload")" = 'true' ]; then
+    path=$(jq -r '.source.path' <<< "$payload")
     dest="$path/"
 else
     path=""
     dest=""
 fi
 
-if [ "$(jq -r '.params | has("folder")' < /tmp/input.json)" = 'true' ]; then
-    folder=$(jq -r '.params.folder' < /tmp/input.json)
+if [ "$(jq -r '.params | has("folder")' <<< "$payload")" = 'true' ]; then
+    folder=$(jq -r '.params.folder' <<< "$payload")
     dest+="$folder/"
 else
     folder=""
 fi
 
-if [ "$(jq -r '.source | has("files")' < /tmp/input.json)" = 'true' ]; then
-    mapfile -t files < <(jq -r '.source.files|.[]' < /tmp/input.json | sort)
+if [ "$(jq -r '.source | has("files")' <<< "$payload")" = 'true' ]; then
+    mapfile -t files < <(jq -r '.source.files|.[]' <<< "$payload" | sort)
 else
     files=()
 fi
 
-if [ "$(jq -r '.params | has("files")' < /tmp/input.json)" = 'true' ]; then
-    mapfile -t params_files < <(jq -r '.params.files|.[]' < /tmp/input.json | sort)
+if [ "$(jq -r '.params | has("files")' <<< "$payload")" = 'true' ]; then
+    mapfile -t params_files < <(jq -r '.params.files|.[]' <<< "$payload" | sort)
 else
     params_files=()
 fi
 
-if [ "$(jq -r '.params | has("args")' < /tmp/input.json)" = 'true' ]; then
-    mapfile -t args < <(jq -r '.params.args|.[]' < /tmp/input.json)
-elif [ "$(jq -r '.source | has("args")' < /tmp/input.json)" = 'true' ]; then
-    mapfile -t args < <(jq -r '.source.args|.[]' < /tmp/input.json)
+if [ "$(jq -r '.params | has("args")' <<< "$payload")" = 'true' ]; then
+    mapfile -t args < <(jq -r '.params.args|.[]' <<< "$payload")
+elif [ "$(jq -r '.source | has("args")' <<< "$payload")" = 'true' ]; then
+    mapfile -t args < <(jq -r '.source.args|.[]' <<< "$payload")
 else
     args=()
 fi
 
-from=$(jq -r '.params.from' < /tmp/input.json)
-skip=$(jq -r '.params.skip // "false"' < /tmp/input.json)
-debug=$(jq -r '.source.debug // "false"' < /tmp/input.json)
+from=$(jq -r '.params.from' <<< "$payload")
+skip=$(jq -r '.params.skip // "false"' <<< "$payload")
+debug=$(jq -r '.source.debug // "false"' <<< "$payload")
 
 get_files_json()
 {
